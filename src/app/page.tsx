@@ -6,6 +6,7 @@ import { useState, useEffect, useRef } from 'react'
 import { useRouter } from 'next/navigation'
 import Script from 'next/script'
 import { Button } from '@/components/ui/button'
+import dropin from 'braintree-web-drop-in'
 import {
   Card,
   CardContent,
@@ -38,7 +39,7 @@ export default function PaymentPage() {
     'idle' | 'success' | 'error'
   >('idle')
   const [errorMessage, setErrorMessage] = useState('')
-  const [instance, setInstance] = useState<any>(null)
+  const [instance, setInstance] = useState<dropin.Dropin | null>(null)
   const [isDevelopmentMode, setIsDevelopmentMode] = useState(false)
   const [developmentMessage, setDevelopmentMessage] = useState('')
   const [isLoading, setIsLoading] = useState(true)
@@ -52,7 +53,7 @@ export default function PaymentPage() {
   const dropinContainerRef = useRef<HTMLDivElement>(null)
 
   // Debug log function
-  const debugLog = (...args: any[]) => {
+  const debugLog = (...args: unknown[]) => {
     if (DEBUG) {
       console.log('[DEBUG]', ...args)
     }
@@ -65,7 +66,7 @@ export default function PaymentPage() {
       // Clean up Braintree instance if it exists
       if (instance) {
         debugLog('Cleaning up Braintree instance on unmount')
-        instance.teardown().catch((err: any) => {
+        instance.teardown().catch((err: Error) => {
           console.error('Error tearing down Braintree instance:', err)
         })
       }
@@ -155,6 +156,9 @@ export default function PaymentPage() {
       } else {
         // Request payment method from Braintree
         debugLog('Requesting payment method from Braintree')
+        if (!instance) {
+          throw new Error('Payment system not initialized')
+        }
         const result = await instance.requestPaymentMethod()
         nonce = result.nonce
         debugLog('Received payment method nonce:', nonce ? '✓' : '✗')
@@ -261,12 +265,10 @@ export default function PaymentPage() {
 
         debugLog('Dropin container is empty, initializing Braintree')
 
-        const paymentOptions: any = {
+        const paymentOptions: dropin.Options = {
           authorization: clientToken,
           container: dropinContainerRef.current,
-          card: {
-            flow: 'vault',
-          },
+          card: {},
         }
 
         // Configure payment options based on selected method
@@ -291,7 +293,7 @@ export default function PaymentPage() {
               debugLog('Creating new Braintree instance')
               window.braintree.dropin.create(
                 paymentOptions,
-                (error: any, dropinInstance: any) => {
+                (error: Error | null, dropinInstance: dropin.Dropin | null) => {
                   if (!isMounted.current) return
 
                   if (error) {
@@ -305,14 +307,14 @@ export default function PaymentPage() {
                 }
               )
             })
-            .catch((err: any) => {
+            .catch((err: Error) => {
               console.error('Error tearing down Braintree instance:', err)
             })
         } else {
           debugLog('Creating new Braintree instance (no previous instance)')
           window.braintree.dropin.create(
             paymentOptions,
-            (error: any, dropinInstance: any) => {
+            (error: Error | null, dropinInstance: dropin.Dropin | null) => {
               if (!isMounted.current) return
 
               if (error) {
@@ -437,7 +439,7 @@ export default function PaymentPage() {
         <Card>
           {isDevelopmentMode && (
             <div className="px-6 pt-6">
-              <Alert variant="warning">
+              <Alert variant="destructive">
                 <AlertTriangle className="h-4 w-4" />
                 <AlertTitle>Development Mode</AlertTitle>
                 <AlertDescription>
@@ -625,8 +627,8 @@ declare global {
     braintree: {
       dropin: {
         create: (
-          options: any,
-          callback: (error: any, instance: any) => void
+          options: dropin.Options,
+          callback: (error: Error | null, instance: dropin.Dropin | null) => void
         ) => void
       }
     }
